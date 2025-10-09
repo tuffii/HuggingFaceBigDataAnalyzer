@@ -29,6 +29,19 @@ def get_total_count(conn):
         (count,) = cur.fetchone()
         return count
 
+def export_sample_to_json(conn, output_path="hf_models_sample.json", limit=100):
+    """Создает обзорный JSON-файл из первых N записей таблицы hf_models."""
+    print(f"🔍 Создаём обзорный JSON-файл ({limit} записей)...")
+
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("SELECT * FROM hf_models LIMIT %s;", (limit,))
+        rows = cur.fetchall()
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(rows, f, ensure_ascii=False, indent=2, default=default_serializer)
+
+    print(f"✅ Обзорный JSON создан: {output_path} ({len(rows)} записей)")
+
 def export_to_jsonl(conn, output_path="hf_models.jsonl"):
     """Экспорт таблицы hf_models в JSONL с прогрессом и сжатием."""
     total_rows = get_total_count(conn)
@@ -73,7 +86,8 @@ def main():
     conn = psycopg2.connect(**DB_CONFIG)
     try:
         # export_to_jsonl(conn)
-        export_to_csv(conn)
+        # export_to_csv(conn)
+        export_sample_to_json(conn)
     finally:
         conn.close()
         print("🔒 Соединение с базой закрыто.")
