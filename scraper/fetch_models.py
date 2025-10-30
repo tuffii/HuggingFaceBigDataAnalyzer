@@ -50,7 +50,6 @@ def fetch_all_models(conn, hf_token: str):
             if total % 100 == 0:
                 print(f"✅ Загружено {total} моделей...")
 
-            # Чуть замедляем, чтобы не попасть под rate limit
             if total % 500 == 0:
                 time.sleep(1)
 
