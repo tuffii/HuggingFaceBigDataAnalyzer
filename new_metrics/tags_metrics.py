@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.ticker import MaxNLocator
+import matplotlib.patches as mpatches
 
 from db.connection import get_connection
 
@@ -75,7 +76,6 @@ def prepare_tags_time_series(df: pd.DataFrame, time_freq: str = DEFAULT_TIME_FRE
     df_expanded = df.explode("tags").dropna(subset=["tags"])
     df_expanded["tags"] = df_expanded["tags"].astype(str)
 
-    # ✅ нормализуем частоту, чтобы pandas не ругался
     freq_map = {
         "YS": "Y", "Y-JAN": "Y",
         "MS": "M", "M": "M",
@@ -113,29 +113,24 @@ def plot_stacked_tags(
         top_n: int = 15,
         title: str = "Models by tags over time (stacked)",
         dpi: int = 150,
-        figsize=(14, 8)
+        figsize=(14, 8),
+        show_other: bool = True
 ):
-    print("🎨 Plotting stacked tags chart...")
-
     if pivot_df.empty:
         print("⚠️ No data to plot.")
         return
 
-    # Суммарное количество по каждому тегу
     col_sums = pivot_df.sum(axis=0).sort_values(ascending=False)
-
-    # Выбираем топ N тегов
     top_cols = list(col_sums.iloc[:top_n].index)
     other_cols = [c for c in pivot_df.columns if c not in top_cols]
 
     df_top = pivot_df[top_cols].copy()
-    if other_cols:
+    other_count = pivot_df[other_cols].sum().sum() if other_cols else 0
+    if show_other and other_count > 0:
         df_top["Other"] = pivot_df[other_cols].sum(axis=1)
 
-    # Строим stacked area chart
     plt.figure(figsize=figsize, dpi=dpi)
     ax = plt.gca()
-
     df_top.plot.area(ax=ax, stacked=True, alpha=0.9)
 
     ax.set_title(title, fontsize=14, weight="bold")
@@ -143,24 +138,15 @@ def plot_stacked_tags(
     ax.set_ylabel("Number of models", fontsize=12)
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     ax.grid(axis="y", linestyle="--", alpha=0.4)
-    ax.legend(
-        loc="upper left",
-        bbox_to_anchor=(1.02, 1.0),
-        title="Tags (total count)"
-    )
 
-    # Добавим текст о null ниже легенды
-    text_x = 1.02
-    text_y = -0.15
-    null_text = f"NULL tags (not plotted): {null_count:,}"
-    ax.text(
-        text_x, text_y,
-        null_text,
-        transform=ax.transAxes,
-        fontsize=11,
-        color="gray",
-        ha="left", va="top"
-    )
+    handles, labels = ax.get_legend_handles_labels()
+    if not show_other and other_count > 0:
+        handles.append(mpatches.Patch(color="gray"))
+        labels.append(f"Other (total {int(other_count):,})")
+    ax.legend(handles, labels, loc="upper left", bbox_to_anchor=(1.02, 1.0), title="Tags (total count)")
+
+    ax.text(1.02, -0.15, f"NULL tags (not plotted): {null_count:,}", transform=ax.transAxes,
+            fontsize=11, color="gray", ha="left", va="top")
 
     plt.tight_layout()
     plt.savefig(out_path, dpi=dpi, bbox_inches="tight")
@@ -199,7 +185,8 @@ def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
             out_path=out_png,
             null_count=null_count,
             top_n=top_n,
-            title=f"Models by tags over time ({freq})"
+            title=f"Models by tags over time ({freq})",
+            show_other=not args.no_other
         )
 
     print("🏁 Tag metrics pipeline finished successfully.")
@@ -211,6 +198,7 @@ if __name__ == "__main__":
     parser.add_argument("--out-csv", dest="out_csv", default=None, help="Optional: save aggregated CSV")
     parser.add_argument("--freq", default="YS", help="Time frequency for aggregation (e.g. 'YS', 'MS', 'D')")
     parser.add_argument("--top", type=int, default=15, help="Top N tags to show")
+    parser.add_argument("--no-other", action="store_true", help="Hide 'Other' category from chart but show its total in legend")
     args = parser.parse_args()
 
     main(args.out_png, args.out_csv, args.freq, args.top)
