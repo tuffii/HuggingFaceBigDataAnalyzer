@@ -1,14 +1,13 @@
-# embedding_infer.py
 from __future__ import annotations
+
+from typing import List, Dict, Any, Optional
+
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from typing import List, Dict, Any, Optional
 
 # --- Настройка модели ---
 # "intfloat/e5-base-v2", "BAAI/bge-m3", "sentence-transformers/all-MiniLM-L6-v2"
-
-
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 KNOWN_PIPELINES = [
@@ -29,6 +28,7 @@ KNOWN_PIPELINES = [
     "translation",
     "object-detection"
 ]
+
 
 class PipelineTagInferencer:
     def __init__(self, model_name: str = EMBEDDING_MODEL_NAME):
@@ -51,7 +51,8 @@ class PipelineTagInferencer:
                     parts.append(v)
         return " ".join(parts)
 
-    def infer_pipeline_tag(self, tags: Optional[List[str]], model_id: str, other_fields: Dict[str, Any]) -> Optional[str]:
+    def infer_pipeline_tag(self, tags: Optional[List[str]], model_id: str, other_fields: Dict[str, Any]) -> Optional[
+        str]:
         """
         Возвращает наиболее вероятный pipeline_tag или None, если уверенность низкая.
         """
@@ -65,7 +66,6 @@ class PipelineTagInferencer:
         best_score = float(sim[best_idx])
         predicted_tag = KNOWN_PIPELINES[best_idx]
 
-        # можно логировать
         if best_score >= 0.45:  # эмпирический порог уверенности
             return predicted_tag
         return None

@@ -87,14 +87,12 @@ def prepare_time_series(df: pd.DataFrame, time_freq: str = DEFAULT_TIME_FREQ, fi
             lambda row: infer_pipeline_tag(row["tags"], row["model_id"], row.to_dict()), axis=1
         )
 
-    # Normalize frequency aliases for PeriodIndex
     freq_map = {"MS": "M", "W-MON": "W", "W-SUN": "W", "D": "D"}
     period_freq = freq_map.get(time_freq.upper(), time_freq)
 
-    # Convert to period safely
     df["period"] = (
         df["createdat"]
-        .dt.tz_localize(None)  # drop timezone (fixes the warning)
+        .dt.tz_localize(None)
         .dt.to_period(period_freq)
         .dt.to_timestamp(how="start")
     )
@@ -114,16 +112,27 @@ def prepare_time_series(df: pd.DataFrame, time_freq: str = DEFAULT_TIME_FREQ, fi
     print("✅ Aggregation complete.")
     return pivot
 
-def plot_time_series(pivot_df: pd.DataFrame, out_path: str, top_n: int = TOP_N_LINES, title: str = "Models by pipeline_tag over time",
-                     dpi: int = PLOT_DPI, figsize: Tuple[int, int] = PLOT_SIZE):
+def plot_time_series(
+    pivot_df: pd.DataFrame,
+    out_path: str,
+    top_n: int = TOP_N_LINES,
+    title: str = "Models by pipeline_tag over time",
+    dpi: int = PLOT_DPI,
+    figsize: Tuple[int, int] = PLOT_SIZE,
+):
     print("🎨 Plotting time series graph...")
     col_sums = pivot_df.sum(axis=0).sort_values(ascending=False)
     if col_sums.empty:
         print("⚠️ No data to plot.")
         return
 
+    null_count = int(col_sums.get("NULL", 0))
+    if "NULL" in col_sums:
+        col_sums = col_sums.drop("NULL")
+
     top_cols = list(col_sums.iloc[:top_n].index)
-    other_cols = [c for c in pivot_df.columns if c not in top_cols]
+    other_cols = [c for c in pivot_df.columns if c not in top_cols and c != "NULL"]
+
     df_top = pivot_df[top_cols].copy()
     if other_cols:
         df_top["Other"] = pivot_df[other_cols].sum(axis=1)
@@ -139,14 +148,29 @@ def plot_time_series(pivot_df: pd.DataFrame, out_path: str, top_n: int = TOP_N_L
     ax.set_xlabel("Period (start)", fontsize=12)
     ax.set_ylabel("Number of models", fontsize=12)
     ax.grid(axis="y", linestyle="--", alpha=0.4)
-    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0))
-    ax.yaxis.set_major_locator(MaxNLocator(integer=True, prune='lower'))
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True, prune="lower"))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
     plt.xticks(rotation=45, ha="right")
+
+    legend = ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0))
     plt.tight_layout()
-    plt.savefig(out_path, dpi=dpi)
+
+    if null_count > 0:
+        plt.text(
+            1.02,
+            0.02,
+            f"NULL (missing pipeline_tag): {null_count:,}",
+            transform=ax.transAxes,
+            fontsize=10,
+            color="gray",
+            ha="left",
+            va="bottom",
+        )
+
+    plt.savefig(out_path, dpi=dpi, bbox_inches="tight")
     plt.close()
-    print(f"✅ Plot saved to {out_path}")
+    print(f"✅ Plot saved to {out_path} (NULL count = {null_count:,})")
+
 
 def save_aggregated_csv(pivot_df: pd.DataFrame, out_csv: str):
     print("💾 Saving aggregated CSV...")

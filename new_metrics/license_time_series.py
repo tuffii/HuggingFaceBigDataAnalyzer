@@ -47,19 +47,14 @@ def prepare_time_series(df: pd.DataFrame, time_freq: str = DEFAULT_TIME_FREQ) ->
     print("⏳ Preparing time series aggregation...")
     df = df.copy()
 
-    # нормализуем лицензии
     df["license"] = df["license"].fillna("null").astype(str)
 
-    # 👇 отделяем null
     null_count = (df["license"].str.lower() == "null").sum()
 
-    # 👇 приводим к нижнему регистру для унификации "other"
     df["license"] = df["license"].str.lower()
 
-    # 👇 группируем все варианты "other" в одну категорию
     df.loc[df["license"].str.startswith("other"), "license"] = "other"
 
-    # убираем null (не нужно на графике)
     df = df[df["license"] != "null"]
 
     if df.empty:
@@ -100,7 +95,7 @@ def plot_time_series(
     top_n: int = TOP_N_LINES,
     title: str = "Models by license over time",
     dpi: int = PLOT_DPI,
-    figsize: Tuple[int, int] = PLOT_SIZE
+    figsize: Tuple[int, int] = (14, 7),
 ):
     print("🎨 Plotting license time series...")
     col_sums = pivot_df.sum(axis=0).sort_values(ascending=False)
@@ -122,28 +117,34 @@ def plot_time_series(
     ax.set_xlabel("Period (start)", fontsize=12)
     ax.set_ylabel("Number of models", fontsize=12)
     ax.grid(axis="y", linestyle="--", alpha=0.4)
-    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0))
-    ax.yaxis.set_major_locator(MaxNLocator(integer=True, prune='lower'))
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True, prune="lower"))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
     plt.xticks(rotation=45, ha="right")
 
-    # 👇 текст о количестве null лицензий
+    legend = ax.legend(
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0),
+        frameon=False,
+        fontsize=9,
+    )
+
     if null_count > 0:
-        null_text = f"null (not plotted): {null_count}"
-        # переносим текст вниз, чтобы не пересекался с легендой
-        plt.gca().text(
-            1.02, 0.1, null_text,  # 👈 смещён вниз
-            transform=plt.gca().transAxes,
-            fontsize=10,
-            va='center',
-            bbox=dict(boxstyle="round,pad=0.5", facecolor="white", edgecolor="black", alpha=0.9)
+        null_text = f"null (not plotted): {null_count:,}"
+        plt.gcf().text(
+            0.985,
+            0.05,
+            null_text,
+            fontsize=9,
+            color="gray",
+            ha="right",
+            va="bottom",
         )
 
-    plt.tight_layout(rect=(0, 0, 0.85, 1))
-    plt.savefig(out_path, dpi=dpi)
+    plt.tight_layout()
+    plt.subplots_adjust(right=0.8)
+    plt.savefig(out_path, dpi=dpi, bbox_inches="tight")
     plt.close()
-    print(f"✅ Plot saved to {out_path}")
-
+    print(f"✅ Plot saved to {out_path} (NULL count = {null_count:,})")
 
 
 def save_aggregated_csv(pivot_df: pd.DataFrame, out_csv: str):
