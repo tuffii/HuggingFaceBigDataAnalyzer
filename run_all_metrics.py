@@ -9,36 +9,39 @@ load_dotenv()
 PYTHON_EXEC = sys.executable
 os.environ["HF_TOKEN"] = os.getenv("HF_TOKEN", "")
 
+# гарантируем наличие каталога для результатов
+os.makedirs("results", exist_ok=True)
+
 METRICS = [
     {
         "name": "license_time_series",
         "script": "new_metrics/license_time_series.py",
         "args": [
-            "--out", "results/license_plot.png",
-            "--out-csv", "results/license_data.csv",
+            "--out", "results/license.png",
+            "--out-csv", "results/license.csv",
             "--freq", "MS",
             "--top", "12",
         ],
     },
-    # {
-    #     "name": "pipeline_tag_time_series",
-    #     "script": "new_metrics/pipeline_tag_time_series.py",
-    #     "args": [
-    #         "--out", "results/pipeline_plot.png",
-    #         "--out-csv", "results/pipeline_data.csv",
-    #         "--freq", "MS",
-    #         "--top", "12",
-    #         "--fill-null",
-    #     ],
-    # },
+    {
+        "name": "pipeline_tag_time_series",
+        "script": "new_metrics/pipeline_tag_time_series.py",
+        "args": [
+            "--out", "results/pipeline_plot.png",
+            "--out-csv", "results/pipeline_data.csv",
+            "--freq", "MS",
+            "--top", "12",
+        ],
+    },
     {
         "name": "tags_metrics",
         "script": "new_metrics/tags_metrics.py",
         "args": [
-            "--out", "results/tags_plot.png",
-            "--out-csv", "results/tags_data.csv",
+            "--out", "results/tags.png",
+            "--out-csv", "results/tags.csv",
             "--freq", "YS",
             "--top", "15",
+            "--no-other",  # <-- раньше здесь была пустая строка ""
         ],
     },
 ]
@@ -69,7 +72,8 @@ def run_metric(metric: dict):
 
 def main():
     print("🌍 Loading .env and initializing HF_TOKEN")
-    print(f"HF_TOKEN = {os.environ.get('HF_TOKEN')[:10]}... (hidden)")
+    token = os.environ.get("HF_TOKEN", "")
+    print(f"HF_TOKEN = {token[:10]}... (hidden)")
 
     print("🧩 Starting all metrics in parallel threads...\n")
 
