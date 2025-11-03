@@ -27,6 +27,19 @@ DB_CONFIG = {
     "port": 5432,
 }
 
+# ----- кириллица / русская локаль для подписей месяцев -----
+def setup_russian_labels():
+    import locale, matplotlib
+    matplotlib.rcParams["font.family"] = "DejaVu Sans"
+    matplotlib.rcParams["axes.unicode_minus"] = False
+    for loc in ("ru_RU.UTF-8", "ru_RU", "Russian_Russia"):
+        try:
+            locale.setlocale(locale.LC_TIME, loc)
+            break
+        except locale.Error:
+            pass
+# ----------------------------------------------------------
+
 
 def parse_tags_field(raw_value: str) -> list[str]:
     """
@@ -38,7 +51,6 @@ def parse_tags_field(raw_value: str) -> list[str]:
     if not raw_value:
         return []
     try:
-        # Иногда это уже список или JSON внутри строки
         if isinstance(raw_value, list):
             return raw_value
         return ast.literal_eval(raw_value)
@@ -111,7 +123,7 @@ def plot_stacked_tags(
         out_path: str,
         null_count: int,
         top_n: int = 15,
-        title: str = "Models by tags over time (stacked)",
+        title: str = "Модели по тегам во времени (стековая диаграмма)",
         dpi: int = 150,
         figsize=(14, 8),
         show_other: bool = True
@@ -127,25 +139,25 @@ def plot_stacked_tags(
     df_top = pivot_df[top_cols].copy()
     other_count = pivot_df[other_cols].sum().sum() if other_cols else 0
     if show_other and other_count > 0:
-        df_top["Other"] = pivot_df[other_cols].sum(axis=1)
+        df_top["Другое"] = pivot_df[other_cols].sum(axis=1)
 
     plt.figure(figsize=figsize, dpi=dpi)
     ax = plt.gca()
     df_top.plot.area(ax=ax, stacked=True, alpha=0.9)
 
     ax.set_title(title, fontsize=14, weight="bold")
-    ax.set_xlabel("Period", fontsize=12)
-    ax.set_ylabel("Number of models", fontsize=12)
+    ax.set_xlabel("Период", fontsize=12)
+    ax.set_ylabel("Число моделей", fontsize=12)
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     handles, labels = ax.get_legend_handles_labels()
     if not show_other and other_count > 0:
         handles.append(mpatches.Patch(color="gray"))
-        labels.append(f"Other (total {int(other_count):,})")
-    ax.legend(handles, labels, loc="upper left", bbox_to_anchor=(1.02, 1.0), title="Tags (total count)")
+        labels.append(f"Другое (всего {int(other_count):,})")
+    ax.legend(handles, labels, loc="upper left", bbox_to_anchor=(1.02, 1.0), title="Теги (суммарно)", frameon=False)
 
-    ax.text(1.02, -0.15, f"NULL tags (not plotted): {null_count:,}", transform=ax.transAxes,
+    ax.text(1.02, -0.15, f"Пустые теги (не на графике): {null_count:,}", transform=ax.transAxes,
             fontsize=11, color="gray", ha="left", va="top")
 
     plt.tight_layout()
@@ -161,6 +173,7 @@ def save_aggregated_csv(pivot_df: pd.DataFrame, out_csv: str):
 
 
 def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
+    setup_russian_labels()  # включаем кириллицу/локаль для подписей
     print("🚀 Starting tag metrics pipeline...")
     conn = get_connection(DB_CONFIG)
     try:
@@ -185,7 +198,7 @@ def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
             out_path=out_png,
             null_count=null_count,
             top_n=top_n,
-            title=f"Models by tags over time ({freq})",
+            title=f"Модели по тегам во времени ({freq})",
             show_other=not args.no_other
         )
 

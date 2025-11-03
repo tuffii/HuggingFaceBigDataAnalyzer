@@ -1,6 +1,8 @@
 from __future__ import annotations
 import argparse
 from typing import Optional, Tuple
+import locale
+
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
@@ -27,38 +29,46 @@ DB_CONFIG = {
     "port": 5432,
 }
 
+# --- Русская локаль и кириллица на графиках ---
+def setup_russian_labels():
+    import matplotlib
+    matplotlib.rcParams["font.family"] = "DejaVu Sans"   # есть в matplotlib, поддерживает кириллицу
+    matplotlib.rcParams["axes.unicode_minus"] = False
+    for loc in ("ru_RU.UTF-8", "ru_RU", "Russian_Russia"):
+        try:
+            locale.setlocale(locale.LC_TIME, loc)
+            break
+        except locale.Error:
+            pass
+# ------------------------------------------------
 
 def fetch_data(conn) -> pd.DataFrame:
-    print("🔄 Fetching data from database...")
+    print("🔄 Получаем данные из базы...")
     with conn.cursor() as cur:
         cur.execute(SELECT_SQL)
         rows = cur.fetchall()
-    print(f"✅ Retrieved {len(rows)} rows from DB.")
+    print(f"✅ Получено строк: {len(rows)}")
     if not rows:
         return pd.DataFrame(columns=["model_id", "license", "createdat"])
 
-    df = pd.DataFrame(rows)
-    print("🧩 Parsing timestamps...")
+    df = pd.DataFrame(rows, columns=["model_id", "license", "createdat"])
+    print("🧩 Парсим временные метки...")
     df["createdat"] = pd.to_datetime(df["createdat"], utc=True, errors="coerce")
     return df
 
 
 def prepare_time_series(df: pd.DataFrame, time_freq: str = DEFAULT_TIME_FREQ) -> Tuple[pd.DataFrame, int]:
-    print("⏳ Preparing time series aggregation...")
+    print("⏳ Готовим агрегирование по времени...")
     df = df.copy()
 
     df["license"] = df["license"].fillna("null").astype(str)
-
     null_count = (df["license"].str.lower() == "null").sum()
-
     df["license"] = df["license"].str.lower()
-
     df.loc[df["license"].str.startswith("other"), "license"] = "other"
-
     df = df[df["license"] != "null"]
 
     if df.empty:
-        print("⚠️ No valid license data found.")
+        print("⚠️ Нет валидных данных по лицензиям.")
         return pd.DataFrame(), null_count
 
     freq_map = {"MS": "M", "W-MON": "W", "W-SUN": "W", "D": "D", "Y": "Y"}
@@ -83,9 +93,8 @@ def prepare_time_series(df: pd.DataFrame, time_freq: str = DEFAULT_TIME_FREQ) ->
     pivot = pivot.reindex(full_idx, fill_value=0)
     pivot.index.name = "period"
 
-    print("✅ Aggregation complete.")
+    print("✅ Агрегирование завершено.")
     return pivot, null_count
-
 
 
 def plot_time_series(
@@ -93,14 +102,14 @@ def plot_time_series(
     out_path: str,
     null_count: int,
     top_n: int = TOP_N_LINES,
-    title: str = "Models by license over time",
+    title: str = "Модели по лицензиям",
     dpi: int = PLOT_DPI,
     figsize: Tuple[int, int] = (14, 7),
 ):
-    print("🎨 Plotting license time series...")
+    print("🎨 Строим график по лицензиям...")
     col_sums = pivot_df.sum(axis=0).sort_values(ascending=False)
     if col_sums.empty:
-        print("⚠️ No data to plot.")
+        print("⚠️ Нет данных для построения графика.")
         return
 
     top_cols = list(col_sums.iloc[:top_n].index)
@@ -109,27 +118,28 @@ def plot_time_series(
     plt.figure(figsize=figsize, dpi=dpi)
     ax = plt.gca()
 
-    for col in tqdm(df_top.columns, desc="📈 Drawing lines"):
+    for col in tqdm(df_top.columns, desc="📈 Рисуем линии"):
         linewidth = 1.0 + (df_top[col].sum() / (df_top.sum().sum() + 1)) * 4.0
         ax.plot(df_top.index, df_top[col].values, label=f"{col} ({int(df_top[col].sum())})", linewidth=linewidth)
 
     ax.set_title(title, fontsize=14)
-    ax.set_xlabel("Period (start)", fontsize=12)
-    ax.set_ylabel("Number of models", fontsize=12)
+    ax.set_xlabel("Период (начало)", fontsize=12)
+    ax.set_ylabel("Число моделей", fontsize=12)
     ax.grid(axis="y", linestyle="--", alpha=0.4)
     ax.yaxis.set_major_locator(MaxNLocator(integer=True, prune="lower"))
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))  # русские месяцы при рабочей локали
     plt.xticks(rotation=45, ha="right")
 
-    legend = ax.legend(
+    ax.legend(
         loc="upper left",
         bbox_to_anchor=(1.02, 1.0),
         frameon=False,
         fontsize=9,
+        title="Лицензия"
     )
 
     if null_count > 0:
-        null_text = f"null (not plotted): {null_count:,}"
+        null_text = f"null (не на графике): {null_count:,}"
         plt.gcf().text(
             0.985,
             0.05,
@@ -144,17 +154,19 @@ def plot_time_series(
     plt.subplots_adjust(right=0.8)
     plt.savefig(out_path, dpi=dpi, bbox_inches="tight")
     plt.close()
-    print(f"✅ Plot saved to {out_path} (NULL count = {null_count:,})")
+    print(f"✅ График сохранён в {out_path} (null = {null_count:,})")
 
 
 def save_aggregated_csv(pivot_df: pd.DataFrame, out_csv: str):
-    print("💾 Saving aggregated CSV...")
+    print("💾 Сохраняем агрегированный CSV...")
     pivot_df.to_csv(out_csv, index_label="period")
-    print(f"✅ CSV saved to {out_csv}")
+    print(f"✅ CSV сохранён: {out_csv}")
 
 
 def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
-    print("🚀 Starting license statistics pipeline...")
+    setup_russian_labels()  # <<< включаем кириллицу и русские месяцы
+
+    print("🚀 Запуск пайплайна по лицензиям...")
     conn = get_connection(DB_CONFIG)
     try:
         df = fetch_data(conn)
@@ -162,12 +174,10 @@ def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
         conn.close()
 
     if df.empty:
-        print("⚠️ No rows fetched from DB. Exiting.")
+        print("⚠️ Пустая выборка. Завершаем.")
         return
 
     pivot, null_count = prepare_time_series(df, time_freq=freq)
-
-    print(f"📊 Hidden license counts (not plotted):")
 
     if out_csv and not pivot.empty:
         save_aggregated_csv(pivot, out_csv)
@@ -178,18 +188,18 @@ def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
             out_png,
             null_count,
             top_n=top_n,
-            title=f"Models by license ({freq})"
+            title=f"Модели по лицензиям ({freq})"
         )
 
-    print("🏁 License statistics pipeline finished successfully.")
+    print("🏁 Готово.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Plot license time series from HF models DB")
-    parser.add_argument("--out", dest="out_png", required=True, help="Path to output PNG")
-    parser.add_argument("--out-csv", dest="out_csv", default=None, help="Optional: save aggregated CSV")
-    parser.add_argument("--freq", default="MS", help="Time frequency for aggregation (e.g. 'MS', 'W-MON', 'D', 'Y')")
-    parser.add_argument("--top", type=int, default=12, help="Top N licenses to show")
+    parser = argparse.ArgumentParser(description="График динамики лицензий моделей (HF)")
+    parser.add_argument("--out", dest="out_png", required=True, help="Путь к PNG")
+    parser.add_argument("--out-csv", dest="out_csv", default=None, help="Опционально: путь к CSV")
+    parser.add_argument("--freq", default="MS", help="Частота ('MS','W-MON','D','Y')")
+    parser.add_argument("--top", type=int, default=12, help="Топ N лицензий на графике")
     args = parser.parse_args()
 
     main(args.out_png, args.out_csv, args.freq, args.top)
