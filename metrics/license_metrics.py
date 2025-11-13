@@ -7,9 +7,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import matplotlib.dates as mdates
-from tqdm import tqdm
 from db.connection import get_connection
 
+# Константы
 DEFAULT_TIME_FREQ = "MS"
 PLOT_DPI = 150
 PLOT_SIZE = (12, 7)
@@ -29,10 +29,11 @@ DB_CONFIG = {
     "port": 5432,
 }
 
-# --- Русская локаль и кириллица на графиках ---
+
+# Настройка локали и шрифтов
 def setup_russian_labels():
     import matplotlib
-    matplotlib.rcParams["font.family"] = "DejaVu Sans"   # есть в matplotlib, поддерживает кириллицу
+    matplotlib.rcParams["font.family"] = "DejaVu Sans"
     matplotlib.rcParams["axes.unicode_minus"] = False
     for loc in ("ru_RU.UTF-8", "ru_RU", "Russian_Russia"):
         try:
@@ -40,27 +41,23 @@ def setup_russian_labels():
             break
         except locale.Error:
             pass
-# ------------------------------------------------
 
+
+# Получение данных из базы
 def fetch_data(conn) -> pd.DataFrame:
-    print("🔄 Получаем данные из базы...")
     with conn.cursor() as cur:
         cur.execute(SELECT_SQL)
         rows = cur.fetchall()
-    print(f"✅ Получено строк: {len(rows)}")
     if not rows:
         return pd.DataFrame(columns=["model_id", "license", "createdat"])
-
     df = pd.DataFrame(rows, columns=["model_id", "license", "createdat"])
-    print("🧩 Парсим временные метки...")
     df["createdat"] = pd.to_datetime(df["createdat"], utc=True, errors="coerce")
     return df
 
 
+# Подготовка временного ряда
 def prepare_time_series(df: pd.DataFrame, time_freq: str = DEFAULT_TIME_FREQ) -> Tuple[pd.DataFrame, int]:
-    print("⏳ Готовим агрегирование по времени...")
     df = df.copy()
-
     df["license"] = df["license"].fillna("null").astype(str)
     null_count = (df["license"].str.lower() == "null").sum()
     df["license"] = df["license"].str.lower()
@@ -68,7 +65,6 @@ def prepare_time_series(df: pd.DataFrame, time_freq: str = DEFAULT_TIME_FREQ) ->
     df = df[df["license"] != "null"]
 
     if df.empty:
-        print("⚠️ Нет валидных данных по лицензиям.")
         return pd.DataFrame(), null_count
 
     freq_map = {"MS": "M", "W-MON": "W", "W-SUN": "W", "D": "D", "Y": "Y"}
@@ -93,10 +89,10 @@ def prepare_time_series(df: pd.DataFrame, time_freq: str = DEFAULT_TIME_FREQ) ->
     pivot = pivot.reindex(full_idx, fill_value=0)
     pivot.index.name = "period"
 
-    print("✅ Агрегирование завершено.")
     return pivot, null_count
 
 
+# Построение графика
 def plot_time_series(
     pivot_df: pd.DataFrame,
     out_path: str,
@@ -106,10 +102,8 @@ def plot_time_series(
     dpi: int = PLOT_DPI,
     figsize: Tuple[int, int] = (14, 7),
 ):
-    print("🎨 Строим график по лицензиям...")
     col_sums = pivot_df.sum(axis=0).sort_values(ascending=False)
     if col_sums.empty:
-        print("⚠️ Нет данных для построения графика.")
         return
 
     top_cols = list(col_sums.iloc[:top_n].index)
@@ -118,7 +112,7 @@ def plot_time_series(
     plt.figure(figsize=figsize, dpi=dpi)
     ax = plt.gca()
 
-    for col in tqdm(df_top.columns, desc="📈 Рисуем линии"):
+    for col in df_top.columns:
         linewidth = 1.0 + (df_top[col].sum() / (df_top.sum().sum() + 1)) * 4.0
         ax.plot(df_top.index, df_top[col].values, label=f"{col} ({int(df_top[col].sum())})", linewidth=linewidth)
 
@@ -127,7 +121,7 @@ def plot_time_series(
     ax.set_ylabel("Число моделей", fontsize=12)
     ax.grid(axis="y", linestyle="--", alpha=0.4)
     ax.yaxis.set_major_locator(MaxNLocator(integer=True, prune="lower"))
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))  # русские месяцы при рабочей локали
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))  # ← теперь дата в формате 2025-11
     plt.xticks(rotation=45, ha="right")
 
     ax.legend(
@@ -139,11 +133,10 @@ def plot_time_series(
     )
 
     if null_count > 0:
-        null_text = f"null (не на графике): {null_count:,}"
         plt.gcf().text(
             0.985,
             0.05,
-            null_text,
+            f"null (не на графике): {null_count:,}",
             fontsize=9,
             color="gray",
             ha="right",
@@ -154,19 +147,16 @@ def plot_time_series(
     plt.subplots_adjust(right=0.8)
     plt.savefig(out_path, dpi=dpi, bbox_inches="tight")
     plt.close()
-    print(f"✅ График сохранён в {out_path} (null = {null_count:,})")
 
 
+# Сохранение агрегированных данных
 def save_aggregated_csv(pivot_df: pd.DataFrame, out_csv: str):
-    print("💾 Сохраняем агрегированный CSV...")
     pivot_df.to_csv(out_csv, index_label="period")
-    print(f"✅ CSV сохранён: {out_csv}")
 
 
+# Основная функция
 def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
-    setup_russian_labels()  # <<< включаем кириллицу и русские месяцы
-
-    print("🚀 Запуск пайплайна по лицензиям...")
+    setup_russian_labels()
     conn = get_connection(DB_CONFIG)
     try:
         df = fetch_data(conn)
@@ -174,7 +164,6 @@ def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
         conn.close()
 
     if df.empty:
-        print("⚠️ Пустая выборка. Завершаем.")
         return
 
     pivot, null_count = prepare_time_series(df, time_freq=freq)
@@ -190,8 +179,6 @@ def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
             top_n=top_n,
             title=f"Модели по лицензиям ({freq})"
         )
-
-    print("🏁 Готово.")
 
 
 if __name__ == "__main__":

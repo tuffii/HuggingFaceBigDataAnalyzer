@@ -27,7 +27,6 @@ DB_CONFIG = {
     "port": 5432,
 }
 
-# ----- кириллица / русская локаль для подписей месяцев -----
 def setup_russian_labels():
     import locale, matplotlib
     matplotlib.rcParams["font.family"] = "DejaVu Sans"
@@ -38,16 +37,9 @@ def setup_russian_labels():
             break
         except locale.Error:
             pass
-# ----------------------------------------------------------
-
 
 def parse_tags_field(raw_value: str) -> list[str]:
-    """
-    Безопасно парсит колонку tags (возможные форматы:
-    - '["a","b","c"]'
-    - JSON-строка внутри кавычек
-    - null или пустая строка)
-    """
+    """Парсинг поля tags в список строк."""
     if not raw_value:
         return []
     try:
@@ -59,30 +51,25 @@ def parse_tags_field(raw_value: str) -> list[str]:
 
 
 def fetch_data(conn) -> pd.DataFrame:
-    print("🔄 Fetching data from database...")
+    # Получение данных из базы
     with conn.cursor() as cur:
         cur.execute(SELECT_SQL)
         rows = cur.fetchall()
-    print(f"✅ Retrieved {len(rows)} rows from DB.")
     if not rows:
         return pd.DataFrame(columns=["model_id", "tags", "createdat"])
 
     df = pd.DataFrame(rows, columns=["model_id", "tags", "createdat"])
-    print("🧩 Parsing timestamps and tags...")
     df["createdat"] = pd.to_datetime(df["createdat"], utc=True, errors="coerce")
     df["tags"] = df["tags"].apply(parse_tags_field)
     return df
 
 
 def prepare_tags_time_series(df: pd.DataFrame, time_freq: str = DEFAULT_TIME_FREQ) -> Tuple[pd.DataFrame, int]:
-    print("⏳ Preparing tag time series aggregation...")
+    # Подготовка временного ряда по тегам
     df = df.copy()
-
     null_count = df["tags"].apply(lambda x: not x).sum()
     df = df[df["tags"].apply(lambda x: bool(x))]
-
     if df.empty:
-        print("⚠️ No valid tag data found.")
         return pd.DataFrame(), null_count
 
     df_expanded = df.explode("tags").dropna(subset=["tags"])
@@ -114,7 +101,6 @@ def prepare_tags_time_series(df: pd.DataFrame, time_freq: str = DEFAULT_TIME_FRE
     pivot = pivot.reindex(full_idx, fill_value=0)
     pivot.index.name = "period"
 
-    print("✅ Tag aggregation complete.")
     return pivot, null_count
 
 
@@ -129,7 +115,6 @@ def plot_stacked_tags(
         show_other: bool = True
 ):
     if pivot_df.empty:
-        print("⚠️ No data to plot.")
         return
 
     col_sums = pivot_df.sum(axis=0).sort_values(ascending=False)
@@ -151,30 +136,37 @@ def plot_stacked_tags(
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
+    # Легенда
     handles, labels = ax.get_legend_handles_labels()
     if not show_other and other_count > 0:
         handles.append(mpatches.Patch(color="gray"))
         labels.append(f"Другое (всего {int(other_count):,})")
     ax.legend(handles, labels, loc="upper left", bbox_to_anchor=(1.02, 1.0), title="Теги (суммарно)", frameon=False)
 
+    # Показать число моделей без тегов
     ax.text(1.02, -0.15, f"Пустые теги (не на графике): {null_count:,}", transform=ax.transAxes,
             fontsize=11, color="gray", ha="left", va="top")
+
+    # Цифровой формат даты на оси X
+    import matplotlib.dates as mdates
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    plt.xticks(rotation=45, ha="right")
 
     plt.tight_layout()
     plt.savefig(out_path, dpi=dpi, bbox_inches="tight")
     plt.close()
-    print(f"✅ Stacked tags plot saved to {out_path}")
 
 
 def save_aggregated_csv(pivot_df: pd.DataFrame, out_csv: str):
-    print("💾 Saving aggregated tag CSV...")
+    # Сохранение агрегированного CSV
     pivot_df.to_csv(out_csv, index_label="period")
-    print(f"✅ CSV saved to {out_csv}")
 
 
-def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
-    setup_russian_labels()  # включаем кириллицу/локаль для подписей
-    print("🚀 Starting tag metrics pipeline...")
+def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int, show_other: bool):
+    # Настройка русской локали и шрифтов
+    setup_russian_labels()
+
+    # Получение данных из базы
     conn = get_connection(DB_CONFIG)
     try:
         df = fetch_data(conn)
@@ -182,12 +174,10 @@ def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
         conn.close()
 
     if df.empty:
-        print("⚠️ No rows fetched from DB. Exiting.")
         return
 
+    # Подготовка временного ряда по тегам
     pivot, null_count = prepare_tags_time_series(df, time_freq=freq)
-
-    print(f"📊 Total models without tags (not plotted): {null_count:,}")
 
     if out_csv and not pivot.empty:
         save_aggregated_csv(pivot, out_csv)
@@ -199,10 +189,8 @@ def main(out_png: str, out_csv: Optional[str], freq: str, top_n: int):
             null_count=null_count,
             top_n=top_n,
             title=f"Модели по тегам во времени ({freq})",
-            show_other=not args.no_other
+            show_other=show_other
         )
-
-    print("🏁 Tag metrics pipeline finished successfully.")
 
 
 if __name__ == "__main__":
@@ -214,4 +202,4 @@ if __name__ == "__main__":
     parser.add_argument("--no-other", action="store_true", help="Hide 'Other' category from chart but show its total in legend")
     args = parser.parse_args()
 
-    main(args.out_png, args.out_csv, args.freq, args.top)
+    main(args.out_png, args.out_csv, args.freq, args.top, show_other=not args.no_other)
