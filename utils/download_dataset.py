@@ -1,5 +1,5 @@
 from db.connection import get_connection
-from db.schema import init_db
+from db import schema
 from scraper.fetch_models import fetch_all_models
 from dotenv import load_dotenv
 import os
@@ -18,7 +18,7 @@ os.environ["HF_TOKEN"] = os.getenv("HF_TOKEN", "")
 
 def main():
     conn = get_connection(DB_CONFIG)
-    init_db(conn)
+    schema.init_db(conn)
     fetch_all_models(conn, os.getenv("HF_TOKEN"))
     conn.close()
 

@@ -9,20 +9,23 @@ load_dotenv()
 PYTHON_EXEC = sys.executable
 os.environ["HF_TOKEN"] = os.getenv("HF_TOKEN", "")
 
-# корень проекта
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# папка для результатов
 RESULTS_DIR = os.path.join(BASE_DIR, "results")
-os.makedirs(RESULTS_DIR, exist_ok=True)
+GRAPH_DIR = os.path.join(RESULTS_DIR, "graph")
+CSV_DIR = os.path.join(RESULTS_DIR, "csv")
+
+os.makedirs(GRAPH_DIR, exist_ok=True)
+os.makedirs(CSV_DIR, exist_ok=True)
+
 
 METRICS = [
     {
         "name": "license_metrics",
         "script": "license_metrics.py",
         "args": [
-            "--out", os.path.join(RESULTS_DIR, "license.png"),
-            "--out-csv", os.path.join(RESULTS_DIR, "license.csv"),
+            "--out", os.path.join(GRAPH_DIR, "license.png"),
+            "--out-csv", os.path.join(CSV_DIR, "license.csv"),
             "--freq", "MS",
             "--top", "12",
         ],
@@ -31,8 +34,8 @@ METRICS = [
         "name": "pipeline_tag_metrics",
         "script": "pipeline_tag_metrics.py",
         "args": [
-            "--out", os.path.join(RESULTS_DIR, "pipeline_tag.png"),
-            "--out-csv", os.path.join(RESULTS_DIR, "pipeline_tag.csv"),
+            "--out", os.path.join(GRAPH_DIR, "pipeline_tag.png"),
+            "--out-csv", os.path.join(CSV_DIR, "pipeline_tag.csv"),
             "--freq", "MS",
             "--top", "12",
         ],
@@ -41,8 +44,8 @@ METRICS = [
         "name": "tags_metrics",
         "script": "tags_metrics.py",
         "args": [
-            "--out", os.path.join(RESULTS_DIR, "tags.png"),
-            "--out-csv", os.path.join(RESULTS_DIR, "tags.csv"),
+            "--out", os.path.join(GRAPH_DIR, "tags.png"),
+            "--out-csv", os.path.join(CSV_DIR, "tags.csv"),
             "--freq", "YS",
             "--top", "15",
             "--no-other",
@@ -52,18 +55,18 @@ METRICS = [
         "name": "leaders_metrics",
         "script": "leaders_metrics.py",
         "args": [
-            "--out", os.path.join(RESULTS_DIR, "leaders.png"),
-            "--out-csv", os.path.join(RESULTS_DIR, "leaders.csv"),
+            "--out", os.path.join(GRAPH_DIR, "leaders.png"),
+            "--out-csv", os.path.join(CSV_DIR, "leaders.csv"),
             "--freq", "MS",
             "--top", "12",
         ],
     },
     {
-        "name": "architecture_metric",
+        "name": "architecture_metrics",
         "script": "architecture_metrics.py",
         "args": [
-            "--out", os.path.join(RESULTS_DIR, "architecture.png"),
-            "--out-csv", os.path.join(RESULTS_DIR, "architecture.csv"),
+            "--out", os.path.join(GRAPH_DIR, "architecture.png"),
+            "--out-csv", os.path.join(CSV_DIR, "architecture.csv"),
             "--freq", "MS",
             "--top", "12",
         ],
@@ -72,8 +75,8 @@ METRICS = [
         "name": "downloads_time_metrics",
         "script": "downloads_time_metrics.py",
         "args": [
-            "--out", os.path.join(RESULTS_DIR, "downloads_time.png"),
-            "--out-csv", os.path.join(RESULTS_DIR, "downloads_time.csv"),
+            "--out", os.path.join(GRAPH_DIR, "downloads_time.png"),
+            "--out-csv", os.path.join(CSV_DIR, "downloads_time.csv"),
             "--freq", "MS",
         ],
     },
@@ -81,8 +84,8 @@ METRICS = [
         "name": "downloads_authors_metrics",
         "script": "downloads_authors_metrics.py",
         "args": [
-            "--out", os.path.join(RESULTS_DIR, "downloads_authors.png"),
-            "--out-csv", os.path.join(RESULTS_DIR, "downloads_authors.csv"),
+            "--out", os.path.join(GRAPH_DIR, "downloads_authors.png"),
+            "--out-csv", os.path.join(CSV_DIR, "downloads_authors.csv"),
             "--top", "31",
         ],
     },
@@ -90,11 +93,12 @@ METRICS = [
         "name": "prognosis",
         "script": "prognosis.py",
         "args": [
-            "--out", os.path.join(RESULTS_DIR, "prognosis.png"),
-            "--out-csv", os.path.join(RESULTS_DIR, "prognosis.csv"),
+            "--out", os.path.join(GRAPH_DIR, "prognosis.png"),
+            "--out-csv", os.path.join(CSV_DIR, "prognosis.csv"),
         ],
     },
 ]
+
 
 def run_metric(metric: dict):
     """Запускает один пайплайн в отдельном процессе"""
@@ -103,9 +107,12 @@ def run_metric(metric: dict):
     args = metric["args"]
 
     print(f"\n[START] {name}")
+
+    script_path = os.path.join(BASE_DIR, "metrics", script)
+
     try:
         result = subprocess.run(
-            [PYTHON_EXEC, os.path.join(BASE_DIR, script)] + args,
+            [PYTHON_EXEC, script_path] + args,
             check=True,
             capture_output=True,
             text=True,
