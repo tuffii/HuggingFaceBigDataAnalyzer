@@ -1,4 +1,4 @@
 .env
-new_metrics/results
+results/graph
 old_plots
 results
