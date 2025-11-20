@@ -1,110 +1,54 @@
 # HuggingFace Big Data Analyzer
 
-## Аналитика моделей с Hugging Face Hub (Python + PostgreSQL + Grafana)
+Проект для сбора данных с HuggingFace Hub и анализа больших данных о моделях нейросетей
 
-Этот репозиторий содержит инструменты для выгрузки, обработки и анализа больших данных о моделях с Hugging Face Hub.
-Система собирает метаданные, рассчитывает метрики, агрегирует статистику и визуализирует динамику через Grafana.
+## Используемые инструменты
+- **Python** — для скриптов сбора данных, расчета метрик и построения графиков  
+- **Docker** — для поднятия окружения и сервисов  
+- **PostgreSQL** — для хранения всех данных  
+- **Grafana** — для визуализации метрик  
 
-### Сбор данных
+## Базы данных
+В проекте используется несколько таблиц:  
 
-Загрузка информации о моделях HuggingFace через API
+| Таблица           | Описание |
+|------------------|----------|
+| `hf_models`      | Основная таблица со всеми данными моделей HuggingFace |
+| `hf_architecture`| Данные по архитектурам моделей |
+| `hf_downloads`   | Динамика скачиваний моделей |
+| `hf_leaders`     | Топ-авторы по количеству скачиваний |
+| `hf_license`     | Популярность лицензий |
+| `hf_category`    | Категории и pipeline_tag моделей |  
 
-Сохранение данных в PostgreSQL
+Эти таблицы содержат очищенные данные, которые используются для построения графиков в Grafana
 
-Хранение: model_id, downloads, likes, author, task, library_name, createdAt, лицензия и др.
+## Запуск проекта
 
-### Метрики и аналитика
+1. **Поднять окружение через Docker**  
 
-Динамика скачиваний (по месяцам)
+```bash
+docker-compose up -d
+````
 
-Топ-авторов по скачиваниям
+2. **Выгрузить данные с HuggingFace**
 
-Популярность лицензий
+```bash
+python utils/download_dataset.py
+```
 
-Топовые задачи и библиотеки
+3. **Построить графики и метрики с помощью Python**
 
-Метрики в CSV/PNG
+```bash
+python metrics/run_all_metrics.py
+```
 
-Возможность запускать отдельные пайплайны
+4. **Построить таблицы для Grafana**
 
-### Визуализация
+```bash
+python -m metrics.tables.run_all_tables
+```
 
-Проект интегрирован с Grafana, где строятся интерактивные панели:
+5. **Открыть Grafana**
 
-тренды скачиваний
-
-пики спроса
-
-сравнение авторов/моделей
-
-популярность фреймворков
-
-активность по датам
-
-статистика моделей в разрезе задач / лицензий / организаций
-
-Архитектура проекта
-
-/db
-   connection.py         — подключение к PostgreSQL
-   init.sql              — структура таблиц
-
-/metrics
-   downloads_time_metrics.py       — динамика скачиваний
-   downloads_authors_metrics.py    — топ авторов
-   license_metrics.py              — анализ лицензий
-   ...
-/grafana
-   dashboards.json        — (опционально) экспорт панели
-
-/scripts
-   fetch_hf_data.py       — загрузка данных из HuggingFace
-
-README.md
-pyproject.toml / requirements.txt
-
-
-Требования
-
-Python 3.10+
-
-PostgreSQL 14+
-
-Grafana 9+
-
-API-доступ к HuggingFace (опционально)
-
-Установка и запуск
-1. Клонировать репозиторий
-git clone https://github.com/username/HuggingFaceBigDataAnalyzer.git
-cd HuggingFaceBigDataAnalyzer
-
-2. Установить зависимости
-pip install -r requirements.txt
-
-3. Настроить базу PostgreSQL
-Выполнить SQL-скрипт:
-psql -U postgres -f db/init.sql
-
-4. Загрузить данные с HuggingFace
-python scripts/fetch_hf_data.py
-
-5. Запустить расчёт метрик
-python metrics/downloads_time_metrics.py \
-    --out downloads.png \
-    --out-csv downloads.csv
-
-Графики в Grafana
-
-1. Настроить PostgreSQL Datasource
-
-2. Подключить вашу базу
-
-3. Импортировать дашборд (если есть dashboards.json)
-
-4. Использовать SQL-запросы вида:
-SELECT date_trunc('month', createdAt) AS month,
-       SUM(downloads) AS downloads
-FROM hf_models
-GROUP BY month
-ORDER BY month;
+* Перейти на `http://localhost:3000`
+* Импортировать дашборд из `grafana/dashboards/HuggingFaceMetrics.json`
